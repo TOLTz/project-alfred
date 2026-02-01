@@ -1,5 +1,28 @@
-.venv/
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+.pytest_cache/
 
+# Ambientes Virtuais
+.venv/
+venv/
+ENV/
+
+# Configurações e Segredos
 .env
+
+# Banco de Dados
+alfred.db
+*.sqlite3
+
+# Arquivos de Áudio (Pasta de uploads/gerados)
+audios/
+
+# IDEs
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
