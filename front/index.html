@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Pedido por Voz</title>
+
+  <style>
+    body { margin:0; font-family:system-ui; background:#0b0f19; color:#e8eefc }
+    header { padding:16px; display:flex; justify-content:space-between; border-bottom:1px solid rgba(255,255,255,.1) }
+    .tabs button { margin-left:8px; padding:8px 12px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.05); color:#e8eefc; cursor:pointer }
+    .tabs button.active { background:rgba(93,156,236,.3); border-color:rgba(93,156,236,.6) }
+    main { max-width:900px; margin:auto; padding:20px }
+    .card { background:rgba(255,255,255,.05); border:1px solid rgba(255,255,255,.15); border-radius:16px; padding:16px; margin-bottom:16px }
+    .ptt { width:220px; height:220px; border-radius:999px; margin:auto; display:flex; align-items:center; justify-content:center; font-size:18px; font-weight:800; cursor:pointer; background:radial-gradient(circle, rgba(93,156,236,.35), rgba(255,255,255,.05)); border:2px solid rgba(255,255,255,.2) }
+    .ptt.recording { background:radial-gradient(circle, rgba(236,93,93,.45), rgba(255,255,255,.05)); border-color:rgba(236,93,93,.6) }
+    .btn { padding:10px 14px; border-radius:10px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08); color:#e8eefc; cursor:pointer; font-weight:600 }
+    .btn.primary { background:rgba(93,156,236,.3); border-color:rgba(93,156,236,.55) }
+    .pill { padding:4px 10px; border-radius:999px; font-size:12px; border:1px solid rgba(255,255,255,.15); background:rgba(255,255,255,.08) }
+    textarea { width:100%; min-height:120px; border-radius:10px; padding:10px; background:rgba(0,0,0,.25); color:#e8eefc; border:1px solid rgba(255,255,255,.15) }
+    pre { background:rgba(0,0,0,.25); border-radius:10px; padding:10px; border:1px solid rgba(255,255,255,.15); white-space:pre-wrap }
+  </style>
+</head>
+
+<body>
+<header>
+  <b>Pedido por Voz</b>
+  <div class="tabs">
+    <button id="tabCliente" class="active">Cliente</button>
+    <button id="tabFuncionario">Funcionário</button>
+  </div>
+</header>
+
+<main>
+
+<section id="cliente">
+  <div class="card">
+    <h3>Cliente</h3>
+    <div id="ptt" class="ptt">SEGURE</div>
+    <div style="margin-top:10px">
+      <span class="pill" id="recStatus">parado</span>
+      <span class="pill" id="jobStatus">—</span>
+    </div>
+    <div style="margin-top:10px">
+      <a id="downloadAudio" class="btn" style="pointer-events:none;opacity:.5" download="pedido.webm">Baixar áudio</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <h4>Pedido entendido</h4>
+    <pre id="prettyOrder">—</pre>
+    <textarea id="editJson"></textarea>
+    <div style="margin-top:10px">
+      <button id="confirmBtn" class="btn primary" disabled>Confirmar pedido</button>
+      <button id="resetBtn" class="btn" disabled>Refazer</button>
+    </div>
+  </div>
+</section>
+
+<section id="funcionario" style="display:none">
+  <div class="card">
+    <h3>Funcionário</h3>
+    <button id="refreshOrdersBtn" class="btn">Mostrar todas comandas</button>
+    <div id="ordersWrap" style="margin-top:12px"></div>
+  </div>
+</section>
+
+</main>
+
+<script>
+const BASE_URL = "http://127.0.0.1:8000";
+
+const tabCliente = document.getElementById("tabCliente");
+const tabFuncionario = document.getElementById("tabFuncionario");
+const cliente = document.getElementById("cliente");
+const funcionario = document.getElementById("funcionario");
+
+tabCliente.onclick = () => {
+  tabCliente.classList.add("active");
+  tabFuncionario.classList.remove("active");
+  cliente.style.display = "";
+  funcionario.style.display = "none";
+};
+
+tabFuncionario.onclick = () => {
+  tabFuncionario.classList.add("active");
+  tabCliente.classList.remove("active");
+  funcionario.style.display = "";
+  cliente.style.display = "none";
+  loadOrders();
+};
+
+const ptt = document.getElementById("ptt");
+const recStatus = document.getElementById("recStatus");
+const jobStatus = document.getElementById("jobStatus");
+const prettyOrder = document.getElementById("prettyOrder");
+const editJson = document.getElementById("editJson");
+const confirmBtn = document.getElementById("confirmBtn");
+const resetBtn = document.getElementById("resetBtn");
+const downloadAudio = document.getElementById("downloadAudio");
+
+let mediaRecorder;
+let chunks = [];
+let currentJobId = null;
+let sse = null;
+let lastBlobUrl = null;
+
+async function startRecording() {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+  chunks = [];
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.ondataavailable = e => chunks.push(e.data);
+  mediaRecorder.onstop = async () => {
+    stream.getTracks().forEach(t => t.stop());
+    const blob = new Blob(chunks, { type: mediaRecorder.mimeType });
+    if (lastBlobUrl) URL.revokeObjectURL(lastBlobUrl);
+    lastBlobUrl = URL.createObjectURL(blob);
+    downloadAudio.href = lastBlobUrl;
+    downloadAudio.style.pointerEvents = "auto";
+    downloadAudio.style.opacity = "1";
+    await sendAudio(blob);
+  };
+  mediaRecorder.start();
+  ptt.classList.add("recording");
+  ptt.textContent = "FALANDO...";
+  recStatus.textContent = "gravando";
+}
+
+function stopRecording() {
+  if (mediaRecorder && mediaRecorder.state !== "inactive") {
+    mediaRecorder.stop();
+    ptt.classList.remove("recording");
+    ptt.textContent = "SEGURE";
+    recStatus.textContent = "parado";
+  }
+}
+
+async function sendAudio(blob) {
+  jobStatus.textContent = "enviando";
+  const fd = new FormData();
+  fd.append("file", blob, "pedido.webm");
+  const r = await fetch(`${BASE_URL}/audio`, { method:"POST", body:fd });
+  const data = await r.json();
+  currentJobId = data.job_id;
+  jobStatus.textContent = "processando";
+  openSSE(currentJobId);
+}
+
+function openSSE(jobId) {
+  if (sse) sse.close();
+  sse = new EventSource(`${BASE_URL}/events/${jobId}`);
+  sse.onmessage = e => {
+    const parsed = JSON.parse(e.data);
+    prettyOrder.textContent = parsed.items.map(i => `• ${i.quantity}x ${i.name}`).join("\n");
+    editJson.value = JSON.stringify(parsed, null, 2);
+    confirmBtn.disabled = false;
+    resetBtn.disabled = false;
+    jobStatus.textContent = "pronto";
+    sse.close();
+  };
+}
+
+confirmBtn.onclick = async () => {
+  const payload = {
+    job_id: currentJobId,
+    order: JSON.parse(editJson.value)
+  };
+  await fetch(`${BASE_URL}/orders/confirm`, {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify(payload)
+  });
+  jobStatus.textContent = "confirmado";
+};
+
+resetBtn.onclick = () => location.reload();
+
+ptt.addEventListener("mousedown", startRecording);
+ptt.addEventListener("mouseup", stopRecording);
+ptt.addEventListener("mouseleave", stopRecording);
+ptt.addEventListener("touchstart", e => { e.preventDefault(); startRecording(); });
+ptt.addEventListener("touchend", e => { e.preventDefault(); stopRecording(); });
+
+const ordersWrap = document.getElementById("ordersWrap");
+const refreshOrdersBtn = document.getElementById("refreshOrdersBtn");
+
+refreshOrdersBtn.onclick = loadOrders;
+
+function orderPretty(order) {
+  return order.items.map(i => `• ${i.quantity}x ${i.name}`).join("\n");
+}
+
+async function loadOrders() {
+  const r = await fetch(`${BASE_URL}/orders`);
+  const data = await r.json();
+  ordersWrap.innerHTML = "";
+  data.forEach(o => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `<b>Comanda #${o.id}</b> <span class="pill">${o.status}</span><pre>${orderPretty(o.order)}</pre>`;
+    const btn = document.createElement("button");
+    btn.className = "btn primary";
+    btn.textContent = "Pedido entregue";
+    btn.disabled = o.status === "delivered";
+    btn.onclick = async () => {
+      await fetch(`${BASE_URL}/orders/${o.id}/delivered`, { method:"POST" });
+      loadOrders();
+    };
+    card.appendChild(btn);
+    ordersWrap.appendChild(card);
+  });
+}
+</script>
+</body>
+</html>
