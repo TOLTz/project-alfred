@@ -18,3 +18,7 @@ uvicorn app.api:app --reload
 ```
 rq worker audio-orders --url redis://localhost:6379 --worker-class rq.worker.SimpleWorker
 ```
+
+# Rodar front
+cd front
+python -m http.server 5173
