@@ -1,67 +1,83 @@
 import os
-from typing import List, Dict, Any
+from dotenv import load_dotenv
 
 from google import genai
-from google.genai import types
 
-from app.ai.schemas import AudioOrderResult
+load_dotenv()
+
+
+def _get_api_key() -> str:
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if key:
+        return key
+    key_test = os.getenv("GEMINI_API_KEY_TEST", "").strip()
+    if key_test:
+        return key_test
+    raise RuntimeError("GEMINI_API_KEY não encontrado. Verifique seu .env.")
+
+
+def _get_model() -> str:
+    return os.getenv("GEMINI_MODEL", "gemini-3-flash-preview")
 
 
 def _get_client() -> genai.Client:
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise RuntimeError("GEMINI_API_KEY não encontrado. Verifique seu .env.")
-    return genai.Client(api_key=api_key)
+    return genai.Client(api_key=_get_api_key())
 
 
-def _build_prompt(menu: List[Dict[str, Any]]) -> str:
-    return f"""
-Você é um sistema de pedidos de restaurante.
+def transcribe_and_parse_order(audio_bytes: bytes, mime_type: str, menu: list):
+    client = _get_client()
+    model = _get_model()
 
-Tarefas:
-1) Transcrever o áudio em pt-BR (raw_transcript) com máxima fidelidade.
-2) Gerar uma versão limpa (clean_transcript), removendo muletas: "ah", "hum", "é..." e frases como
-   "eu quero", "pra mim", "por favor".
-3) Interpretar o pedido e mapear para itens do cardápio canônico abaixo.
-4) Se algo não casar com o cardápio, colocar em 'unmatched' (lista de strings).
-5) Retornar SOMENTE JSON válido seguindo o schema.
+    prompt = f"""
+Você é um atendente de restaurante.
+1) Transcreva o áudio do cliente.
+2) Normalize o pedido usando o cardápio e aliases.
+3) Retorne um JSON com:
+- transcript (string)
+- items: lista de {{ item_id, name, quantity, notes(optional) }}
 
-Cardápio canônico (use como fonte de verdade para item_id e name; aliases ajudam a reconhecer variações):
+Cardápio (JSON):
 {menu}
 
 Regras:
-- "queijo quente", "pão com queijo", "queixo quente" devem virar o MESMO item se existir no cardápio.
-- Quantidades: detectar "um/uma", "dois/duas", "3", etc. Se não houver, quantity=1.
-- Observações: "sem X", "com X", "bem passado", "com gelo" → notes.
-- intent:
-  - "order" se houver pedido de comida/bebida
-  - "call_waiter" se pedir garçom/ajuda/atendimento
-  - "unknown" se não der para entender
-"""
-
-
-def transcribe_and_parse_order(
-    audio_bytes: bytes,
-    mime_type: str,
-    menu: List[Dict[str, Any]],
-    model: str = "gemini-3-flash-preview",
-) -> AudioOrderResult:
-    """
-    mime_type exemplos: audio/wav, audio/mp3, audio/ogg, audio/flac, audio/aac
-    """
-    client = _get_client()
-    prompt = _build_prompt(menu)
+- Use aliases para mapear itens iguais.
+- quantity default = 1.
+- notes só se houver observação.
+Retorne SOMENTE JSON válido. Sem texto extra, sem markdown.
+""".strip()
 
     resp = client.models.generate_content(
         model=model,
         contents=[
-            types.Part.from_bytes(data=audio_bytes, mime_type=mime_type),
-            prompt,
+            {"role": "user", "parts": [{"text": prompt}]},
+            {"role": "user", "parts": [{"inline_data": {"mime_type": mime_type, "data": audio_bytes}}]},
         ],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=AudioOrderResult,
-        ),
     )
 
-    return AudioOrderResult.model_validate_json(resp.text)
+    import json
+
+    raw = (resp.text or "").strip()
+
+    if not raw:
+        raise RuntimeError("Gemini retornou resposta vazia (resp.text vazio).")
+
+    # remove possíveis cercas de markdown ```json ... ```
+    if raw.startswith("```"):
+        raw = raw.strip("`").strip()
+        if raw.lower().startswith("json"):
+            raw = raw[4:].strip()
+
+    # tenta parse direto
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        # tenta extrair o primeiro bloco JSON dentro do texto
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            candidate = raw[start:end + 1]
+            return json.loads(candidate)
+
+        # se não deu, joga erro com preview pra debug
+        preview = raw[:400]
+        raise RuntimeError(f"Resposta do Gemini não é JSON válido. Preview: {preview}")

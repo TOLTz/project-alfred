@@ -1,8 +1,8 @@
-from typing import Dict, Any, List
-
-from app.ai.gemini_client import transcribe_and_parse_order
 from dotenv import load_dotenv
 load_dotenv()
+
+from typing import Dict, Any, List
+from app.ai.gemini_client import transcribe_and_parse_order
 
 
 def process_audio_job(
@@ -15,4 +15,6 @@ def process_audio_job(
         mime_type=mime_type,
         menu=menu,
     )
-    return result.model_dump()
+
+    # Se gemini_client já retorna dict, retorna direto
+    return result

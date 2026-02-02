@@ -1,17 +1,22 @@
+import os
+from dotenv import load_dotenv
+
 from redis import Redis
-from rq import Queue, Worker
+from rq import Queue
+from rq.worker import SimpleWorker
 
-# conexão Redis
-redis_conn = Redis(host="localhost", port=6379)
+load_dotenv()
 
-# fila usada pela API
+REDIS_URL = os.getenv("REDIS_URL")
+if REDIS_URL:
+    redis_conn = Redis.from_url(REDIS_URL)
+else:
+    REDIS_HOST = os.getenv("REDIS_HOST", "localhost")
+    REDIS_PORT = int(os.getenv("REDIS_PORT", "6379"))
+    redis_conn = Redis(host=REDIS_HOST, port=REDIS_PORT)
+
 audio_queue = Queue("audio-orders", connection=redis_conn)
 
 if __name__ == "__main__":
-    print("Worker RQ iniciado (modo compatível com Windows)")
-    worker = Worker(
-        [audio_queue],
-        connection=redis_conn,
-        disable_job_desc_logging=True
-    )
+    worker = SimpleWorker([audio_queue], connection=redis_conn)
     worker.work()
