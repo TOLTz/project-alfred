@@ -36,6 +36,7 @@
 <section id="cliente">
   <div class="card">
     <h3>Cliente</h3>
+    <div class="pill">Mesa: <span id="mesaLabel">—</span></div>
     <div id="ptt" class="ptt">SEGURE</div>
     <div style="margin-top:10px">
       <span class="pill" id="recStatus">parado</span>
@@ -70,6 +71,9 @@
 <script>
 const BASE_URL = "http://127.0.0.1:8000";
 
+const mesaId = new URLSearchParams(window.location.search).get("mesa_id") || "—";
+const mesaLabel = document.getElementById("mesaLabel");
+if (mesaLabel) mesaLabel.textContent = mesaId;
 const tabCliente = document.getElementById("tabCliente");
 const tabFuncionario = document.getElementById("tabFuncionario");
 const cliente = document.getElementById("cliente");
@@ -163,6 +167,7 @@ function openSSE(jobId) {
 confirmBtn.onclick = async () => {
   const payload = {
     job_id: currentJobId,
+    mesa_id: mesaId,
     order: JSON.parse(editJson.value)
   };
   await fetch(`${BASE_URL}/orders/confirm`, {

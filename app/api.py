@@ -102,7 +102,9 @@ def job_events(job_id: str):
 def confirm_order(payload: dict = Body(...)):
     job_id = payload.get("job_id")
     order_obj = payload.get("order")
+    mesa_id = payload.get("mesa_id", "—")
 
+    
     if not job_id or not order_obj:
         raise HTTPException(status_code=400, detail="job_id e order são obrigatórios")
 
@@ -115,6 +117,7 @@ def confirm_order(payload: dict = Body(...)):
             created_at=time.time(),
             status="pending",
             job_id=job_id,
+            mesa_id=mesa_id,
             order_json=json.dumps(order_obj, ensure_ascii=False),
         )
         db.add(row)
@@ -136,6 +139,7 @@ def list_orders():
                 "status": r.status,
                 "job_id": r.job_id,
                 "order": json.loads(r.order_json),
+                "mesa_id": r.mesa_id,
             }
             for r in rows
         ]
@@ -151,7 +155,7 @@ def mark_order_delivered(order_id: str):
         if not row:
             raise HTTPException(status_code=404, detail="order_id não encontrado")
 
-        row.status = "delivered"
+        row.status = "entregue"
         db.commit()
         return {"order_id": row.id, "status": row.status}
     finally:

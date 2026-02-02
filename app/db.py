@@ -28,6 +28,7 @@ class Order(Base):
     status: Mapped[str] = mapped_column(String, nullable=False)  # pending | delivered
     job_id: Mapped[str] = mapped_column(String, nullable=False)
     order_json: Mapped[str] = mapped_column(Text, nullable=False)
+    mesa_id: Mapped[str] = mapped_column(String, nullable=False, default="—")
 
 
 class MenuItem(Base):
