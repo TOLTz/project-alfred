@@ -22,3 +22,8 @@ rq worker audio-orders --url redis://localhost:6379 --worker-class rq.worker.Sim
 # Rodar front
 cd front
 python -m http.server 5173
+
+$env:BASE_FRONT_URL="url" q vai ser do front 
+$env:MESA_START="1"
+$env:MESA_END="30"
+python scripts/generate_qrcode.py
