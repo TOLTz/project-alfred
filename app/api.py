@@ -2,9 +2,11 @@ import os
 import time
 import uuid
 import json
+import asyncio
+
 from dotenv import load_dotenv
 
-from fastapi import FastAPI, UploadFile, File, Body, HTTPException
+from fastapi import FastAPI, UploadFile, File, Body, HTTPException, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,7 +18,7 @@ from app.jobs import process_audio_job
 from app.db import init_db, SessionLocal, Order
 from app.menu_seed import ensure_menu_seeded
 from app.menu_repo import get_menu_as_list
-
+from app.whatsapp import send_whatsapp_message, format_order_text
 
 
 load_dotenv()
@@ -97,14 +99,13 @@ def job_events(job_id: str):
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
-
 @app.post("/orders/confirm")
-def confirm_order(payload: dict = Body(...)):
+def confirm_order(payload: dict = Body(...), background_tasks: BackgroundTasks = None):
     job_id = payload.get("job_id")
     order_obj = payload.get("order")
     mesa_id = payload.get("mesa_id", "—")
+    customer_text = payload.get("customer_text", "")
 
-    
     if not job_id or not order_obj:
         raise HTTPException(status_code=400, detail="job_id e order são obrigatórios")
 
@@ -122,6 +123,12 @@ def confirm_order(payload: dict = Body(...)):
         )
         db.add(row)
         db.commit()
+
+        text = format_order_text(order_obj, mesa_id, order_id, customer_text)
+
+        if background_tasks:
+            background_tasks.add_task(send_whatsapp_message, text)
+
         return {"order_id": order_id, "status": "pending"}
     finally:
         db.close()
