@@ -1,9 +1,9 @@
 from dotenv import load_dotenv
-load_dotenv()
 
 from typing import Dict, Any, List
 from app.ai.gemini_client import transcribe_and_parse_order
 
+load_dotenv()
 
 def process_audio_job(
     audio_bytes: bytes,
@@ -15,6 +15,7 @@ def process_audio_job(
         mime_type=mime_type,
         menu=menu,
     )
-
+    if "observations" not in result or result["observations"] is None:
+        result["observations"] = ''
     # Se gemini_client já retorna dict, retorna direto
     return result

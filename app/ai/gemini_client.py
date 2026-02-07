@@ -1,4 +1,6 @@
 import os
+import json
+
 from dotenv import load_dotenv
 
 from google import genai
@@ -32,9 +34,16 @@ def transcribe_and_parse_order(audio_bytes: bytes, mime_type: str, menu: list):
 Você é um atendente de restaurante.
 1) Transcreva o áudio do cliente.
 2) Normalize o pedido usando o cardápio e aliases.
-3) Retorne um JSON com:
+3) Identifique os itens do menu (use item_id do menu).
+4) Separe "observations" (observações) com tudo que NÃO é um item do menu, por exemplo:
+    - sem cebola / sem gelo / bem passado / tirar tomate
+    - trocar bebida / colocar adicional
+    - instruções para preparo ou entrega
+    - qualquer detalhe adicional
+5) Retorne um JSON com:
 - transcript (string)
 - items: lista de {{ item_id, name, quantity, notes(optional) }}
+- observations: lista de strings (observações gerais, sem relação direta com um item específico)
 
 Cardápio (JSON):
 {menu}
@@ -54,7 +63,6 @@ Retorne SOMENTE JSON válido. Sem texto extra, sem markdown.
         ],
     )
 
-    import json
 
     raw = (resp.text or "").strip()
 
