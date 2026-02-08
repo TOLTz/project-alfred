@@ -17,5 +17,5 @@ def process_audio_job(
     )
     if "observations" not in result or result["observations"] is None:
         result["observations"] = ''
-    # Se gemini_client já retorna dict, retorna direto
+        
     return result
